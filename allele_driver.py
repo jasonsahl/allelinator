@@ -82,7 +82,7 @@ def parse_fasta_by_coverage(in_fasta,min_cov):
             else:
                 passing_records.append(record.id)
     if len(failed_records)>0:
-        print("%s records were below %sX and will be filtered" % (len(failed_records),str(min_cov)))
+        logPrint("%s records were below %sX and will be filtered" % (len(failed_records),str(min_cov)))
     return passing_records
 
 def parse_zygosity(in_fasta,passing_records,proportion):
@@ -106,18 +106,19 @@ def parse_zygosity(in_fasta,passing_records,proportion):
         values = sorted(v,reverse=True)
         #I assume this is unlikely, but if a sample is only present once, keep it
         if len(values) == 1:
-            passing.append(k+"_"+str(v))
+            for value in v:
+                passing.append(k+"_"+str(value))
         else:
             #This only keeps the two largest values in a list
             kept_values = values[:2]
             #Here I divide the large value by the small value
-            if float(kept_values[0]/kept_values[1])>=proportion:
+            if float(kept_values[1]/kept_values[0])>=proportion:
                 #I want to keep the entire sample name for subsequent filtering
                 passing.append(k+"_"+str(kept_values[0]))
                 #Here I will also keep the second read as it has passed the proportion
                 passing.append(k+"_"+str(kept_values[1]))
             #Now we need to analyze the case where the proportion filter is failed
-            elif float(kept_values[0]/kept_values[1])<proportion:
+            elif float(kept_values[1]/kept_values[0])<proportion:
                 #In this case, I just want to keep the most common one
                 passing.append(k+"_"+str(kept_values[0]))
     #I will now find differences between the two lists and report how many were filtered
@@ -126,7 +127,6 @@ def parse_zygosity(in_fasta,passing_records,proportion):
         logPrint("%s samples failed the proportion filter and will be removed" % len(diffs))
     return passing
        
-
 def get_alleles(in_fasta):
     sequences = []
     with open(in_fasta) as my_fasta:
@@ -211,7 +211,7 @@ def main(fasta,min_cov,proportion,alleles):
 
 if __name__ == "__main__":
     #TODO: bump version when significant changes are made
-    parser = OptionParser(usage="usage: %prog [options]",version="%prog 0.0.2")
+    parser = OptionParser(usage="usage: %prog [options]",version="%prog 0.0.3")
     #First step: make sure it works on a single file
     parser.add_option("-f","--fasta",dest="fasta",
                      help="input FASTA file to filter [REQUIRED]",
