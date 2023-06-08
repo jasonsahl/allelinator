@@ -12,12 +12,55 @@ import optparse
 from optparse import OptionParser
 import os
 import collections
+import time
 
 try:
     from Bio import SeqIO
 except:
     print("Biopython is not installed but needs to be...exiting")
     sys.exit()
+
+#logPrint stuff
+OUTSTREAM = sys.stdout
+ERRSTREAM = sys.stderr
+DEBUG = False
+
+def logPrint(msg, stream=None):
+    if stream is None:
+        stream = OUTSTREAM
+    stream.write('LOG: %s - %s\n' % (timestamp(), removeRecursiveMsg(msg)))
+    stream.flush()
+
+def errorPrint(msg, stream=None):
+    if stream is None:
+        stream = ERRSTREAM
+
+    stream.write('ERROR: %s - %s\n' % (timestamp(), removeRecursiveMsg(msg)))
+    stream.flush()
+
+def debugPrint(fmsg, stream=None):
+    """In this case msg is a function, so the work is only done if debugging is one"""
+    if DEBUG:
+        if stream is None:
+            stream = ERRSTREAM
+
+        stream.write('DEBUG: %s - %s\n' % (timestamp(), removeRecursiveMsg(fmsg())))
+        stream.flush()
+
+def timestamp():
+    return time.strftime('%Y/%m/%d %H:%M:%S')
+
+def removeRecursiveMsg(msg):
+    """
+    This takes a message and if it starts with something that looks like
+    a message generated with these tools it chops it off.  Useful if using
+    one of these logging functions to print output from a program using
+    the same logging functions
+    """
+    if msg.startswith('ERROR: ') or msg.startswith('DEBUG: ') or msg.startswith('LOG: '):
+        return msg.split(' - ', 1)[1]
+    else:
+        return msg
 
 #This function tests that required files are actually present
 def test_file(option, opt_str, value, parser):
@@ -80,7 +123,7 @@ def parse_zygosity(in_fasta,passing_records,proportion):
     #I will now find differences between the two lists and report how many were filtered
     diffs = set(passing_records).difference(set(passing))
     if len(diffs)>0:
-        print("%s samples failed the proportion filter and will be removed" % len(diffs))
+        logPrint("%s samples failed the proportion filter and will be removed" % len(diffs))
     return passing
        
 
@@ -98,11 +141,13 @@ def get_alleles(in_fasta):
 
 def assign_alleles(fasta,allele_file,allele_list,passing_records):
     #This covers the situation where there are no previous alleles
+    #This list will include the previous alleles where necessary
+    previous_allele_numbers = []
+    file_name = os.path.basename(fasta).strip(".fasta")
     if "NULL" in allele_file:
         #We will need this dictionary for renaming the alleles
         allele_dict = {}
         #First, get the name of the allele, remove fasta extension
-        file_name = os.path.basename(fasta).strip(".fasta")
         #Now I will write the alleles in terms of order
         alleles_out = open("%s_alleles.tsv" % file_name, "w")
         counter = (i for i in range(len(allele_list)))
@@ -114,6 +159,14 @@ def assign_alleles(fasta,allele_file,allele_list,passing_records):
             #alleles_out.write(item[0]+"\t"+str(autoIncrement())+"\n")
         #close the file
         alleles_out.close()
+    else:
+        #This is the case where you already have allele numbers assigned
+        allele_dict = {}
+        with open(allele_file) as my_known_alleles:
+            for line in my_known_alleles:
+                fields = line.split()
+                allele_dict.update({fields[0]:fields[1]})
+                previous_allele_numbers.append(fields[1])
     #Now I will rename the FASTA file to include the information that I need
     with open(fasta) as my_fasta:
         genotype_out = open("%s.genotyped.fasta" % file_name,"w")
@@ -127,11 +180,27 @@ def assign_alleles(fasta,allele_file,allele_list,passing_records):
                 if record.seq in allele_dict:
                     #This will pull out the allele number from the dictionary
                     allele = allele_dict.get(record.seq)
+                else:
+                    #I do this so I know where to start renumbering
+                    last_allele = previous_allele_numbers[-1]
+                    allele = int(last_allele)+1
+                    #I also need to update the allele list
+                    previous_allele_numbers.append(allele)
+                    #I need to update the dictionary to include the new allele
+                    allele_dict.update({record.seq:str(allele)})
+                    #This indicates that the allele has not been seen before
+                    #I will need to overwrite the existing alleles file
                 new_header = name_fields[0]+"_"+file_name+"_"+name_fields[2]+"_"+str(allele)
                 #From above, the locus should be the file_name
                 #Write the new file
-                genotype_out.write(">"+str(new_header)+"\n"+str(item[0])+"\n")
+                genotype_out.write(">"+str(new_header)+"\n"+str(record.seq)+"\n")
                 #Close the file
+        #I will overwrite the alleles file to make sure I capture any new diversity
+        if "NULL" not in allele_file:
+            newout = open("%s_alleles.tsv" % file_name, "w")
+            for k,v in allele_dict.items():
+                newout.write(str(k)+"\t"+str(v)+"\n")
+            newout.close()
         genotype_out.close()
                
 def main(fasta,min_cov,proportion,alleles):
@@ -142,7 +211,7 @@ def main(fasta,min_cov,proportion,alleles):
 
 if __name__ == "__main__":
     #TODO: bump version when significant changes are made
-    parser = OptionParser(usage="usage: %prog [options]",version="%prog 0.0.1")
+    parser = OptionParser(usage="usage: %prog [options]",version="%prog 0.0.2")
     #First step: make sure it works on a single file
     parser.add_option("-f","--fasta",dest="fasta",
                      help="input FASTA file to filter [REQUIRED]",
