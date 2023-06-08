@@ -10,6 +10,8 @@ from __future__ import division
 import sys
 import optparse
 from optparse import OptionParser
+import os
+import collections
 
 try:
     from Bio import SeqIO
@@ -80,10 +82,63 @@ def parse_zygosity(in_fasta,passing_records,proportion):
     if len(diffs)>0:
         print("%s samples failed the proportion filter and will be removed" % len(diffs))
     return passing
-        
-def main(fasta,min_cov,proportion):
+       
+
+def get_alleles(in_fasta):
+    sequences = []
+    with open(in_fasta) as my_fasta:
+        for record in SeqIO.parse(my_fasta,"fasta"):
+            sequences.append(str(record.seq))
+    #This creates a dictionary of sequence and count_number
+    frequency = collections.Counter(sequences)
+    #Sort the dictionary by value in decending order: most common element is listed first
+    sorted_frequency = sorted(frequency.items(), key=lambda x:x[1], reverse=True)
+    #returns this dictionary to be used later
+    return sorted_frequency
+
+def assign_alleles(fasta,allele_file,allele_list,passing_records):
+    #This covers the situation where there are no previous alleles
+    if "NULL" in allele_file:
+        #We will need this dictionary for renaming the alleles
+        allele_dict = {}
+        #First, get the name of the allele, remove fasta extension
+        file_name = os.path.basename(fasta).strip(".fasta")
+        #Now I will write the alleles in terms of order
+        alleles_out = open("%s_alleles.tsv" % file_name, "w")
+        counter = (i for i in range(len(allele_list)))
+        #The second counter is needed just for the dictionary
+        second_counter = (i for i in range(len(allele_list)))
+        for item in allele_list:
+            alleles_out.write(item[0]+"\t"+str(next(counter)+1)+"\n")
+            allele_dict.update({item[0]:str(next(second_counter)+1)})
+            #alleles_out.write(item[0]+"\t"+str(autoIncrement())+"\n")
+        #close the file
+        alleles_out.close()
+    #Now I will rename the FASTA file to include the information that I need
+    with open(fasta) as my_fasta:
+        genotype_out = open("%s.genotyped.fasta" % file_name,"w")
+        for record in SeqIO.parse(my_fasta,"fasta"):
+            #Check to make sure that I want to process this one
+            if record.id in passing_records:
+                #split the name for renaming purposes
+                name_fields = record.id.split("_")
+                #Sample name = field[0], count = field[2]
+                #Now I will parse through the allele list and find a match
+                if record.seq in allele_dict:
+                    #This will pull out the allele number from the dictionary
+                    allele = allele_dict.get(record.seq)
+                new_header = name_fields[0]+"_"+file_name+"_"+name_fields[2]+"_"+str(allele)
+                #From above, the locus should be the file_name
+                #Write the new file
+                genotype_out.write(">"+str(new_header)+"\n"+str(item[0])+"\n")
+                #Close the file
+        genotype_out.close()
+               
+def main(fasta,min_cov,proportion,alleles):
     passing_records = parse_fasta_by_coverage(fasta,min_cov)
     passing_records2 = parse_zygosity(fasta,passing_records,proportion)
+    allele_list = get_alleles(fasta)
+    assign_alleles(fasta,alleles,allele_list,passing_records2)
 
 if __name__ == "__main__":
     #TODO: bump version when significant changes are made
@@ -98,6 +153,9 @@ if __name__ == "__main__":
     parser.add_option("-p","--proportion",dest="proportion",
                      help="reads under this proportion will be filtered; defaults to 0.3",
                      type="float",action="store",default=0.3)
+    parser.add_option("-a","--alleles",dest="alleles",
+                     help="TSV file of seuqence'\tprevious_allele_number",
+                     type="string",action="store",default="NULL")
     options, args = parser.parse_args()
     mandatories = ["fasta"]
     for m in mandatories:
@@ -105,7 +163,7 @@ if __name__ == "__main__":
             print("\nMust provide %s.\n" %m)
             parser.print_help()
             exit(-1)
-    main(options.fasta,options.min_cov,options.proportion)
+    main(options.fasta,options.min_cov,options.proportion,options.alleles)
 
 
 
