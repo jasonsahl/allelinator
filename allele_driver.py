@@ -77,7 +77,7 @@ def parse_fasta_by_coverage(in_fasta,min_cov):
         for record in SeqIO.parse(my_fasta,"fasta"):
             #The coverage will be the 3rd field
             header_fields = record.id.split("_")
-            if int(header_fields[2])<min_cov:
+            if int(header_fields[-1])<min_cov:
                 failed_records.append(record.id)
             else:
                 passing_records.append(record.id)
@@ -92,15 +92,22 @@ def parse_zygosity(in_fasta,passing_records,proportion):
     #Parse through the FASTA again and create a dictionary
     with open(in_fasta) as my_fasta:
         for record in SeqIO.parse(my_fasta,"fasta"):
-            #The sample name will be in the first field
+            #The sample name will be in the first field (but not always)
             header_fields = record.id.split("_")
+            #To get the complete name, let me pop off the last field
+            allele_name = "_".join(header_fields[:-1])
+            #The coverage should always be the last field
+            coverage = "".join(header_fields[-1])
             #Only look at sequences that have passed the first filter
             if record.id in passing_records:
                 #This will create a dictionary of sample: all_associated_coverages
                 try:
-                    sample_dict[header_fields[0]+"_"+header_fields[1]].append(int(header_fields[2]))
+                    sample_dict[allele_name].append(int(str(coverage)))
+                    #sample_dict[header_fields[0]+"_"+header_fields[1]].append(int(header_fields[2]))
+                    
                 except KeyError:
-                    sample_dict[header_fields[0]+"_"+header_fields[1]] = [int(header_fields[2])]
+                    sample_dict[allele_name] = [int(str(coverage))]
+                    #sample_dict[header_fields[0]+"_"+header_fields[1]] = [int(header_fields[2])]
     #Iterate through the dictionary
     for k,v in sample_dict.items():
         values = sorted(v,reverse=True)
