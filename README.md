@@ -4,7 +4,7 @@ This script takes in a FASTA file and reports the alleles
 
 -The script assumes that the input file will be named in this format  
 
-AQ01_01.fasta (2 fields with underscores is important)  
+AQ01_01.fasta (haven't tested case where no underscores are present)  
 
 -The sequences within the file also need to be named to this convention:  
 RHIMI-ARA13-xx-DN-020-JB_S86_17441  
